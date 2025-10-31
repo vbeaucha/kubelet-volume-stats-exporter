@@ -1,0 +1,83 @@
+# Production values for kubelet-volume-stats-exporter
+# This example shows a production-ready configuration
+
+image:
+  repository: docker.io/vbeaucha/kubelet-volume-stats-exporter
+  tag: v1.0.0
+  pullPolicy: IfNotPresent
+
+# Use image pull secret for private registry
+imagePullSecrets:
+  - name: regcred
+
+config:
+  kubeletEndpoint: "https://127.0.0.1:10250"
+  metricsPort: 8080
+  scrapeInterval: "30s"
+  # In production, use proper CA certificates instead of skipping TLS verification
+  insecureSkipTLSVerify: false
+  tokenPath: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+# Higher resource limits for production
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Enable Prometheus Operator integration
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  labels:
+    prometheus: kube-prometheus
+  # Add metric relabeling if needed
+  metricRelabelings: []
+  relabelings: []
+
+# Production-grade probes
+livenessProbe:
+  httpGet:
+    path: /health
+    port: metrics
+  initialDelaySeconds: 15
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: metrics
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Run on all nodes including control plane
+tolerations:
+  - effect: NoSchedule
+    operator: Exists
+  - effect: NoExecute
+    operator: Exists
+
+# Only run on Linux nodes
+nodeSelector:
+  kubernetes.io/os: linux
+
+# Priority class for critical system components
+daemonset:
+  priorityClassName: system-node-critical
+  hostNetwork: true
+  hostPID: false
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+

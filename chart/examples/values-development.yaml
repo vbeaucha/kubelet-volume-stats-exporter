@@ -1,0 +1,70 @@
+# Development values for kubelet-volume-stats-exporter
+# This example shows a minimal configuration for development/testing
+
+image:
+  repository: docker.io/vbeaucha/kubelet-volume-stats-exporter
+  tag: latest
+  pullPolicy: Always
+
+config:
+  kubeletEndpoint: "https://127.0.0.1:10250"
+  metricsPort: 8080
+  scrapeInterval: "15s"  # More frequent scraping for testing
+  insecureSkipTLSVerify: true  # OK for development
+  tokenPath: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+# Lower resource limits for development
+resources:
+  limits:
+    cpu: 200m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# Disable ServiceMonitor in development
+serviceMonitor:
+  enabled: false
+
+# Faster probes for quicker feedback
+livenessProbe:
+  httpGet:
+    path: /health
+    port: metrics
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: metrics
+  initialDelaySeconds: 3
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 3
+
+# Run on all nodes
+tolerations:
+  - effect: NoSchedule
+    operator: Exists
+  - effect: NoExecute
+    operator: Exists
+
+nodeSelector:
+  kubernetes.io/os: linux
+
+daemonset:
+  priorityClassName: ""  # No priority class in development
+  hostNetwork: true
+  hostPID: false
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+

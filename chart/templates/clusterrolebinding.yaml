@@ -1,0 +1,17 @@
+{{- if .Values.rbac.create -}}
+apiVersion: {{ include "kubelet-volume-stats-exporter.rbac.apiVersion" . }}
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kubelet-volume-stats-exporter.fullname" . }}
+  labels:
+    {{- include "kubelet-volume-stats-exporter.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kubelet-volume-stats-exporter.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kubelet-volume-stats-exporter.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+

@@ -1,0 +1,24 @@
+{{- if .Values.rbac.create -}}
+apiVersion: {{ include "kubelet-volume-stats-exporter.rbac.apiVersion" . }}
+kind: ClusterRole
+metadata:
+  name: {{ include "kubelet-volume-stats-exporter.fullname" . }}
+  labels:
+    {{- include "kubelet-volume-stats-exporter.labels" . | nindent 4 }}
+rules:
+  # Required to access kubelet stats API
+  - apiGroups: [""]
+    resources:
+      - nodes/stats
+      - nodes/proxy
+    verbs:
+      - get
+  # Required to list nodes
+  - apiGroups: [""]
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+{{- end }}
+

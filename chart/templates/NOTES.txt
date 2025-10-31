@@ -1,0 +1,102 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+The Kubelet Volume Stats Exporter has been deployed as a DaemonSet in the {{ .Release.Namespace }} namespace.
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }} -n {{ .Release.Namespace }}
+  $ helm get all {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 MONITORING SETUP
+
+1. Check DaemonSet status:
+
+   kubectl get daemonset {{ include "kubelet-volume-stats-exporter.fullname" . }} -n {{ .Release.Namespace }}
+
+2. View pod logs:
+
+   kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "kubelet-volume-stats-exporter.name" . }} --tail=20
+
+3. Port-forward to access metrics locally:
+
+   kubectl port-forward -n {{ .Release.Namespace }} daemonset/{{ include "kubelet-volume-stats-exporter.fullname" . }} 8080:{{ .Values.config.metricsPort }}
+
+   Then visit: http://localhost:8080/metrics
+
+4. Test metrics endpoint:
+
+   curl http://localhost:8080/metrics | grep kubelet_volume_stats
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📈 PROMETHEUS INTEGRATION
+
+{{- if .Values.serviceMonitor.enabled }}
+
+✅ ServiceMonitor is enabled. Prometheus Operator will automatically discover and scrape metrics.
+
+Verify ServiceMonitor:
+
+   kubectl get servicemonitor {{ include "kubelet-volume-stats-exporter.fullname" . }} -n {{ include "kubelet-volume-stats-exporter.serviceMonitor.namespace" . }}
+
+{{- else }}
+
+⚠️  ServiceMonitor is not enabled. To enable it, upgrade the release with:
+
+   helm upgrade {{ .Release.Name }} {{ .Chart.Name }} -n {{ .Release.Namespace }} --set serviceMonitor.enabled=true
+
+Or configure Prometheus to scrape the service directly using the annotations:
+   - prometheus.io/scrape: "true"
+   - prometheus.io/port: "{{ .Values.config.metricsPort }}"
+   - prometheus.io/path: "/metrics"
+
+{{- end }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔍 METRICS EXPOSED
+
+The following metrics are now available:
+
+  • kubelet_volume_stats_capacity_bytes       - Total volume capacity
+  • kubelet_volume_stats_available_bytes      - Available space
+  • kubelet_volume_stats_used_bytes           - Used space
+  • kubelet_volume_stats_inodes               - Total inodes
+  • kubelet_volume_stats_inodes_free          - Free inodes
+  • kubelet_volume_stats_inodes_used          - Used inodes
+  • kubelet_volume_stats_scrape_errors_total  - Scrape error counter
+  • kubelet_volume_stats_last_scrape_timestamp_seconds - Last scrape time
+
+All metrics include labels: namespace, persistentvolumeclaim, pod
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚙️  CONFIGURATION
+
+Current configuration:
+  • Kubelet Endpoint: {{ .Values.config.kubeletEndpoint }}
+  • Metrics Port: {{ .Values.config.metricsPort }}
+  • Scrape Interval: {{ .Values.config.scrapeInterval }}
+  • TLS Verification: {{ if .Values.config.insecureSkipTLSVerify }}Disabled (insecure){{ else }}Enabled{{ end }}
+
+To customize configuration, use:
+
+   helm upgrade {{ .Release.Name }} {{ .Chart.Name }} -n {{ .Release.Namespace }} --set config.scrapeInterval=60s
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 DOCUMENTATION
+
+For more information:
+  • Chart README: https://github.com/vbeaucha/kubelet-volume-stats-exporter/tree/main/chart
+  • Project README: https://github.com/vbeaucha/kubelet-volume-stats-exporter
+  • Kubernetes Issue: https://github.com/kubernetes/kubernetes/issues/133961
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎉 Happy Monitoring!
+

@@ -1,0 +1,203 @@
+# Default values for kubelet-volume-stats-exporter.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Image configuration
+image:
+  # -- Container image repository
+  repository: docker.io/vbeaucha/kubelet-volume-stats-exporter
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+  # -- Overrides the image tag whose default is the chart appVersion
+  tag: ""
+
+# -- Image pull secrets for private registries
+imagePullSecrets: []
+# - name: regcred
+
+# -- Override the name of the chart
+nameOverride: ""
+# -- Override the full name of the chart
+fullnameOverride: ""
+
+# ServiceAccount configuration
+serviceAccount:
+  # -- Specifies whether a service account should be created
+  create: true
+  # -- Annotations to add to the service account
+  annotations: {}
+  # -- The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# RBAC configuration
+rbac:
+  # -- Specifies whether RBAC resources should be created
+  create: true
+
+# Application configuration
+config:
+  # -- Kubelet endpoint URL
+  kubeletEndpoint: "https://127.0.0.1:10250"
+  # -- Port to expose Prometheus metrics
+  metricsPort: 8080
+  # -- Interval to scrape kubelet stats
+  scrapeInterval: "30s"
+  # -- Skip TLS certificate verification (use only in development)
+  insecureSkipTLSVerify: true
+  # -- Path to service account token
+  tokenPath: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+  # -- Enable debug logging including raw API responses (use only for troubleshooting)
+  debug: false
+
+# DaemonSet configuration
+daemonset:
+  # -- Update strategy for the DaemonSet
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  
+  # -- Annotations to add to the DaemonSet pods
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+  
+  # -- Labels to add to the DaemonSet pods
+  podLabels: {}
+  
+  # -- Use host network namespace
+  hostNetwork: true
+  
+  # -- Use host PID namespace
+  hostPID: false
+  
+  # -- Priority class name for the pods
+  priorityClassName: "system-node-critical"
+
+# Security context for the container
+securityContext:
+  # -- Allow privilege escalation
+  allowPrivilegeEscalation: false
+  # -- Capabilities to drop
+  capabilities:
+    drop:
+      - ALL
+  # -- Read-only root filesystem
+  readOnlyRootFilesystem: true
+  # -- Run as non-root user
+  runAsNonRoot: true
+  # -- User ID to run the container
+  runAsUser: 1000
+  # -- Seccomp profile
+  seccompProfile:
+    type: RuntimeDefault
+
+# Pod security context
+podSecurityContext: {}
+  # fsGroup: 2000
+
+# Liveness probe configuration
+livenessProbe:
+  httpGet:
+    path: /health
+    port: metrics
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# Readiness probe configuration
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: metrics
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 200m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# Node selector for pod assignment
+nodeSelector:
+  kubernetes.io/os: linux
+
+# Tolerations for pod assignment
+tolerations:
+  # Run on all nodes including control plane
+  - effect: NoSchedule
+    operator: Exists
+  - effect: NoExecute
+    operator: Exists
+
+# Affinity for pod assignment
+affinity: {}
+
+# Service configuration
+service:
+  # -- Service type
+  type: ClusterIP
+  # -- Service port
+  port: 8080
+  # -- Service annotations
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+  # -- Create a headless service (clusterIP: None)
+  headless: true
+
+# ServiceMonitor configuration for Prometheus Operator
+serviceMonitor:
+  # -- Create ServiceMonitor resource
+  enabled: false
+  # -- ServiceMonitor namespace (defaults to release namespace)
+  namespace: ""
+  # -- ServiceMonitor labels
+  labels: {}
+  # -- ServiceMonitor annotations
+  annotations: {}
+  # -- Scrape interval
+  interval: 30s
+  # -- Scrape timeout
+  scrapeTimeout: ""
+  # -- Metric relabel configs
+  # Fix namespace label conflict: When Prometheus scrapes, it adds a 'namespace' label
+  # from Kubernetes metadata (the exporter's namespace). This conflicts with the metric's
+  # own 'namespace' label (the pod's namespace using the PVC), causing Prometheus to
+  # rename the metric label to 'exported_namespace'.
+  # Solution: Use metricRelabelings to rename 'exported_namespace' back to 'namespace'.
+  metricRelabelings:
+    - sourceLabels: [exported_namespace]
+      targetLabel: namespace
+      action: replace
+    - regex: exported_namespace
+      action: labeldrop
+    - sourceLabels: [exported_pod]
+      targetLabel: pod
+      action: replace
+    - regex: exported_pod
+      action: labeldrop
+  # -- Relabel configs
+  relabelings: []
+  # -- Target labels
+  targetLabels: []
+  # -- Prometheus instance selector
+  selector: {}
+
+# Volume configuration for service account token
+volumes:
+  # -- Service account token volume configuration
+  token:
+    # -- Token expiration in seconds
+    expirationSeconds: 3607
+
