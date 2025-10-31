@@ -87,6 +87,58 @@ annotations:
   prometheus.io/path: "/metrics"
 ```
 
+#### Complete Scrape Configuration
+
+For standard Prometheus (non-Operator), add this scrape configuration to handle label conflicts:
+
+```yaml
+scrape_configs:
+  - job_name: 'kubelet-volume-stats-exporter'
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+            - kubelet-volume-stats
+
+    relabel_configs:
+      # Keep only endpoints for the kubelet-volume-stats-exporter service
+      - source_labels: [__meta_kubernetes_service_name]
+        action: keep
+        regex: kubelet-volume-stats-exporter
+
+      # Use pod name as instance label
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: instance
+
+      # Add node name label
+      - source_labels: [__meta_kubernetes_pod_node_name]
+        target_label: node
+
+    # Fix label conflicts: Prometheus adds namespace/pod labels from Kubernetes metadata,
+    # which conflict with the metric's own namespace/pod labels, causing them to be
+    # renamed to exported_namespace/exported_pod. These rules rename them back.
+    metric_relabel_configs:
+      # Rename exported_namespace back to namespace
+      - source_labels: [exported_namespace]
+        target_label: namespace
+        action: replace
+
+      # Drop the exported_namespace label
+      - regex: exported_namespace
+        action: labeldrop
+
+      # Rename exported_pod back to pod
+      - source_labels: [exported_pod]
+        target_label: pod
+        action: replace
+
+      # Drop the exported_pod label
+      - regex: exported_pod
+        action: labeldrop
+```
+
+**Why these relabeling rules are needed**: Prometheus automatically adds `namespace` and `pod` labels from Kubernetes service discovery metadata (the exporter's namespace/pod). These conflict with the metric's own `namespace` and `pod` labels (the PVC's namespace/pod), causing Prometheus to rename the metric labels to `exported_namespace` and `exported_pod`. The `metric_relabel_configs` above fix this by renaming them back.
+
 ### Prometheus Operator
 
 Enable ServiceMonitor for automatic scraping:
@@ -95,6 +147,46 @@ Enable ServiceMonitor for automatic scraping:
 helm upgrade --install kubelet-volume-stats vbeaucha/kubelet-volume-stats-exporter \
   -n kubelet-volume-stats \
   --set serviceMonitor.enabled=true
+```
+
+The ServiceMonitor includes the necessary `metricRelabelings` to automatically handle the label conflict issue described above.
+
+### Label Conflict Issue: `exported_namespace` and `exported_pod`
+
+**Symptom**: In Grafana or Prometheus, you see labels named `exported_namespace` and `exported_pod` instead of `namespace` and `pod`.
+
+**Root Cause**: This is a common Prometheus label conflict issue:
+
+1. **The exporter exports metrics** with labels: `namespace="default"` (the PVC's namespace) and `pod="my-app-pod"` (the pod using the PVC)
+2. **Prometheus adds metadata labels** from Kubernetes service discovery: `namespace="kubelet-volume-stats"` (the exporter's namespace) and `pod="exporter-pod"` (the exporter pod)
+3. **Conflict detected**: Two labels with the same name but different values
+4. **Prometheus renames**: To avoid the conflict, Prometheus renames the metric's labels to `exported_namespace` and `exported_pod`
+5. **Result**: Your queries and dashboards see the wrong label names
+
+**Solution 1: Use ServiceMonitor (Recommended for Prometheus Operator)**
+
+Enable ServiceMonitor which includes automatic label fixing:
+
+```bash
+helm upgrade --install kubelet-volume-stats vbeaucha/kubelet-volume-stats-exporter \
+  -n kubelet-volume-stats \
+  --set serviceMonitor.enabled=true
+```
+
+The ServiceMonitor includes `metricRelabelings` that automatically rename `exported_namespace` → `namespace` and `exported_pod` → `pod`.
+
+**Solution 2: Manual Prometheus Configuration (Standard Prometheus)**
+
+Add `metric_relabel_configs` to your Prometheus scrape configuration (see "Complete Scrape Configuration" section above).
+
+**Verification**:
+
+```bash
+# Query Prometheus to check label names
+curl -s 'http://prometheus:9090/api/v1/query?query=kubelet_volume_stats_capacity_bytes' | \
+  jq '.data.result[0].metric | keys'
+
+# Should include "namespace" and "pod", NOT "exported_namespace" or "exported_pod"
 ```
 
 ### Example Prometheus Queries
@@ -108,18 +200,16 @@ kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes < 0.1
 
 # Total volume capacity by namespace
 sum by (namespace) (kubelet_volume_stats_capacity_bytes)
+
+# Volumes by pod
+sum by (namespace, pod, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes)
 ```
 
-## Security Considerations
+## Troubleshooting
 
-The exporter follows Kubernetes security best practices:
+### Labels show as `exported_namespace` and `exported_pod`
 
-- Runs as non-root user (UID 1000)
-- Uses read-only root filesystem
-- Drops all Linux capabilities
-- Implements seccomp profile
-- Uses service account tokens for authentication
-- Minimal RBAC permissions (only access to node stats)
+See the "Label Conflict Issue" section under Prometheus Integration above.
 
 ### High memory usage
 
@@ -137,6 +227,17 @@ If you encounter TLS certificate verification errors, you can enable insecure mo
 args:
   - --insecure-skip-tls-verify=true
 ```
+
+## Security Considerations
+
+The exporter follows Kubernetes security best practices:
+
+- Runs as non-root user (UID 1000)
+- Uses read-only root filesystem
+- Drops all Linux capabilities
+- Implements seccomp profile
+- Uses service account tokens for authentication
+- Minimal RBAC permissions (only access to node stats)
 
 ## Development
 
