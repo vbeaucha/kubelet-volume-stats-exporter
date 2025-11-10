@@ -137,9 +137,9 @@ type PVCRef struct {
 }
 
 type VolumeStatsCollector struct {
-	client *http.Client
-	token  string
-	logger *zap.Logger
+	client    *http.Client
+	tokenPath string
+	logger    *zap.Logger
 }
 
 func init() {
@@ -175,14 +175,19 @@ func main() {
 		zap.String("kubelet_endpoint", *kubeletEndpoint),
 		zap.Int("metrics_port", *metricsPort),
 		zap.Duration("scrape_interval", *scrapeInterval),
+		zap.String("token_path", *tokenPath),
 		zap.Bool("debug_mode", *debugMode),
 	)
 
-	// Read service account token
-	token, err := readToken(*tokenPath)
-	if err != nil {
-		logger.Warn("Failed to read service account token, proceeding without authentication",
+	// Verify token file exists at startup
+	if _, err := os.Stat(*tokenPath); err != nil {
+		logger.Warn("Service account token file not found at startup, proceeding without authentication",
+			zap.String("token_path", *tokenPath),
 			zap.Error(err),
+		)
+	} else {
+		logger.Info("Service account token file found, will reload on each request",
+			zap.String("token_path", *tokenPath),
 		)
 	}
 
@@ -198,9 +203,9 @@ func main() {
 	}
 
 	collector := &VolumeStatsCollector{
-		client: client,
-		token:  token,
-		logger: logger,
+		client:    client,
+		tokenPath: *tokenPath,
+		logger:    logger,
 	}
 
 	// Start metrics collection in background
@@ -298,8 +303,16 @@ func (c *VolumeStatsCollector) fetchStats() (*StatsResponse, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	if c.token != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
+	// Read token from file on each request to handle token rotation
+	token, err := readToken(c.tokenPath)
+	if err != nil {
+		c.logger.Debug("Failed to read service account token, proceeding without authentication",
+			zap.String("token_path", c.tokenPath),
+			zap.Error(err),
+		)
+	} else if token != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+		c.logger.Debug("Using service account token for authentication")
 	}
 
 	resp, err := c.client.Do(req)

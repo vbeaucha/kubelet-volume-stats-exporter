@@ -211,6 +211,36 @@ sum by (namespace, pod, persistentvolumeclaim) (kubelet_volume_stats_capacity_by
 
 See the "Label Conflict Issue" section under Prometheus Integration above.
 
+### Exporter stops working after running for some time
+
+**Symptom**: The exporter stops fetching volume statistics after running for 1 days. Restarting the pod temporarily fixes the issue.
+
+**Root Cause**: Service account token expiration. Kubernetes service account tokens have a limited lifetime and are automatically rotated by the kubelet.
+
+**Solution**: The exporter automatically handles token rotation by reloading the token from the filesystem on each request. This is enabled by default in version 1.1.0+.
+
+**Configuration**:
+- Token expiration is set to 24 hours by default (`volumes.token.expirationSeconds: 86400`)
+- Kubernetes automatically rotates the token before expiration
+- The exporter reads the token file on each kubelet API request, picking up the rotated token automatically
+
+**Verification**:
+```bash
+# Check token file is being updated
+kubectl exec -n kubelet-volume-stats daemonset/kubelet-volume-stats-exporter -- \
+  stat /var/run/secrets/kubernetes.io/serviceaccount/token
+
+# Check exporter logs for token-related messages
+kubectl logs -n kubelet-volume-stats -l app.kubernetes.io/name=kubelet-volume-stats-exporter | \
+  grep -i token
+
+# Check for authentication errors
+kubectl logs -n kubelet-volume-stats -l app.kubernetes.io/name=kubelet-volume-stats-exporter | \
+  grep -i "401\|unauthorized\|forbidden"
+```
+
+**For older versions** (< 1.1.0): Upgrade to the latest version which includes automatic token refresh.
+
 ### High memory usage
 
 Adjust resource limits in the DaemonSet:

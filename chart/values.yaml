@@ -198,6 +198,9 @@ serviceMonitor:
 volumes:
   # -- Service account token volume configuration
   token:
-    # -- Token expiration in seconds
-    expirationSeconds: 3607
+    # -- Token expiration in seconds (default: 86400 = 24 hours)
+    # Kubernetes automatically rotates the token before expiration.
+    # The exporter reloads the token from the filesystem on each request,
+    # so it will automatically pick up the rotated token.
+    expirationSeconds: 86400
 
