@@ -1,0 +1,38 @@
+# Relabelings to make metrics compatible with Prometheus standard dashboards
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  
+  # Relabel to make metrics look like they come from kubelet
+  relabelings:
+    # Change job label from the service name to "kubelet"
+    - sourceLabels: [__address__]
+      action: replace
+      targetLabel: job
+      replacement: kubelet
+    # Add metrics_path label
+    - sourceLabels: [__metrics_path__]
+      action: replace
+      targetLabel: metrics_path
+  
+  # Fix the namespace/pod label conflicts
+  metricRelabelings:
+    # Prometheus renames 'namespace' to 'exported_namespace' due to conflict
+    # Rename it back to 'namespace' (this is the PVC's namespace)
+    - sourceLabels: [exported_namespace]
+      targetLabel: namespace
+      action: replace
+    - regex: exported_namespace
+      action: labeldrop
+    
+    # Same for pod label
+    - sourceLabels: [exported_pod]
+      targetLabel: pod
+      action: replace
+    - regex: exported_pod
+      action: labeldrop
+    
+    # Drop unnecessary labels added by the exporter service
+    - regex: (container|endpoint|service|instance)
+      action: labeldrop
